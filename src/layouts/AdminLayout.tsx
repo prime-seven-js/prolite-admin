@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: "📊" },
   { to: "/users", label: "Users", icon: "👤" },
   { to: "/posts", label: "Posts", icon: "📝" },
+  { to: "/comments", label: "Comments", icon: "💬" },
 ];
 
 export default function AdminLayout() {
