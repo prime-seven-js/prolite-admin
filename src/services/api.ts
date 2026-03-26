@@ -2,7 +2,7 @@ import axios from "axios";
 import type { AxiosError, InternalAxiosRequestConfig } from "axios";
 
 const apiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL?.trim() || "http://127.0.0.1:8787";
+  import.meta.env.VITE_API_BASE_URL?.trim() || "https://api.prolite.gay/";
 
 const api = axios.create({
   baseURL: apiBaseUrl,
