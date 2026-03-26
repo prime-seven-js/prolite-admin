@@ -17,8 +17,8 @@ export const adminService = {
   updateUser: (id: string, data: Partial<Pick<User, "username" | "email" | "bio" | "avatar" | "role">>) =>
     api.put<User>(`/protected/admin/users/${id}`, data).then((r) => r.data),
 
-  resetPassword: (id: string) =>
-    api.put<{ message: string; newPassword: string }>(`/protected/admin/users/${id}/reset-password`).then((r) => r.data),
+  resetPassword: (id: string, newPassword: string) =>
+    api.put<{ message: string }>(`/protected/admin/users/${id}/reset-password`, { newPassword }).then((r) => r.data),
 
   deleteUser: (id: string) =>
     api.delete(`/protected/admin/users/${id}`).then((r) => r.data),

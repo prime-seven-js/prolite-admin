@@ -4,6 +4,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import type { User } from "@/types";
 
 type ModalMode = "create" | "edit" | null;
+type ResetModalState = { userId: string; username: string } | null;
 
 interface FormData {
   username: string;
@@ -23,7 +24,9 @@ export default function UsersPage() {
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [formError, setFormError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
-  const [resetResult, setResetResult] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<ResetModalState>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetError, setResetError] = useState("");
   const [search, setSearch] = useState("");
 
   const fetchUsers = async () => {
@@ -91,12 +94,22 @@ export default function UsersPage() {
     fetchUsers();
   };
 
-  const handleResetPassword = async (userId: string) => {
+  const handleResetPassword = async () => {
+    if (!resetTarget) return;
+
+    if (resetPassword.length < 8) {
+      setResetError("New password must be at least 8 characters.");
+      return;
+    }
+
     try {
-      const result = await adminService.resetPassword(userId);
-      setResetResult(result.newPassword);
-    } catch {
-      setResetResult("Failed to reset password");
+      await adminService.resetPassword(resetTarget.userId, resetPassword);
+      setResetTarget(null);
+      setResetPassword("");
+      setResetError("");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to reset password";
+      setResetError(message);
     }
   };
 
@@ -174,7 +187,11 @@ export default function UsersPage() {
                       Edit
                     </button>
                     <button
-                      onClick={() => handleResetPassword(user.user_id)}
+                      onClick={() => {
+                        setResetTarget({ userId: user.user_id, username: user.username });
+                        setResetPassword("");
+                        setResetError("");
+                      }}
                       className="text-blue-400 hover:text-blue-300 text-xs transition-colors cursor-pointer"
                     >
                       Reset PW
@@ -289,22 +306,59 @@ export default function UsersPage() {
         />
       )}
 
-      {/* Reset Password Result */}
-      {resetResult && (
+      {/* Reset Password */}
+      {resetTarget && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-sm">
-            <h3 className="text-white font-semibold mb-2">New Password</h3>
-            <p className="text-sm text-zinc-400 mb-3">Copy this password now. It won't be shown again.</p>
-            <code className="block bg-zinc-800 rounded-lg px-4 py-3 text-green-400 text-sm font-mono break-all">
-              {resetResult}
-            </code>
-            <button
-              onClick={() => setResetResult(null)}
-              className="mt-4 w-full bg-white text-black text-sm font-semibold rounded-lg py-2 hover:bg-zinc-200 transition-colors cursor-pointer"
-            >
-              Close
-            </button>
-          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleResetPassword();
+            }}
+            className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-sm space-y-4"
+          >
+            <div>
+              <h3 className="text-white font-semibold mb-2">Reset Password</h3>
+              <p className="text-sm text-zinc-400">
+                Set a new password for <span className="text-white">{resetTarget.username}</span>.
+              </p>
+            </div>
+
+            {resetError && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-3 py-2 rounded-lg">
+                {resetError}
+              </div>
+            )}
+
+            <input
+              type="password"
+              value={resetPassword}
+              onChange={(e) => setResetPassword(e.target.value)}
+              placeholder="New password"
+              minLength={8}
+              required
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+            />
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setResetTarget(null);
+                  setResetPassword("");
+                  setResetError("");
+                }}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 text-sm bg-white text-black rounded-lg font-semibold hover:bg-zinc-200 transition-colors cursor-pointer"
+              >
+                Save Password
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
