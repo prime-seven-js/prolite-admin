@@ -26,6 +26,11 @@ export interface Stats {
   postsByDate: Array<{ date: string; count: number }>;
 }
 
+export interface ChartStats {
+  postsByPrivacy: Array<{ label: string; value: number }>;
+  postsByDate: Array<{ date: string; count: number }>;
+}
+
 export interface AppComment {
   comment_id: string;
   post_id: string;
@@ -42,5 +47,5 @@ export interface AuthState {
   user: { userId: string; email: string; username: string; role: string } | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  setTokens: (token: string, refreshToken: string) => void;
+  setTokens: (token: string, refreshToken?: string | null) => void;
 }

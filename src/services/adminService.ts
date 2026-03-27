@@ -1,12 +1,12 @@
 import api from "./api";
-import type { User, Post, Stats, AppComment } from "@/types";
+import type { User, Post, Stats, AppComment, ChartStats } from "@/types";
 
 export const adminService = {
   // ─── Stats ──────────────────────────────────
   getStats: () => api.get<Stats>("/protected/admin/stats").then((r) => r.data),
 
   getChartStats: () =>
-    api.get<{ postsByPrivacy: any[]; postsByDate: any[] }>("/protected/admin/stats/charts").then((r) => r.data),
+    api.get<ChartStats>("/protected/admin/stats/charts").then((r) => r.data),
 
   // ─── Users ──────────────────────────────────
   getUsers: () => api.get<User[]>("/protected/admin/users").then((r) => r.data),

@@ -8,8 +8,52 @@ const api = axios.create({
   baseURL: apiBaseUrl,
 });
 
-api.interceptors.request.use((config) => {
+const getStoredAccessToken = () => {
   const token = localStorage.getItem("admin_token");
+
+  if (!token || token === "undefined" || token === "null") {
+    return null;
+  }
+
+  return token;
+};
+
+const getApiErrorMessage = (error: unknown): string => {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+
+    if (data && typeof data === "object") {
+      if ("error" in data && typeof data.error === "string") {
+        return data.error;
+      }
+
+      if ("message" in data && typeof data.message === "string") {
+        return data.message;
+      }
+    }
+
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Request failed";
+};
+
+const getStoredRefreshToken = () => {
+  const refreshToken = localStorage.getItem("admin_refresh_token");
+
+  if (!refreshToken || refreshToken === "undefined" || refreshToken === "null") {
+    return null;
+  }
+
+  return refreshToken;
+};
+
+api.interceptors.request.use((config) => {
+  const token = getStoredAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -50,12 +94,12 @@ api.interceptors.response.use(
       originalRequest._retry ||
       skipUrls.some((u) => url.includes(u))
     ) {
-      return Promise.reject(error);
+      return Promise.reject(new Error(getApiErrorMessage(error)));
     }
 
-    const refreshToken = localStorage.getItem("admin_refresh_token");
+    const refreshToken = getStoredRefreshToken();
     if (!refreshToken) {
-      return Promise.reject(error);
+      return Promise.reject(new Error(getApiErrorMessage(error)));
     }
 
     if (isRefreshing) {
@@ -74,18 +118,23 @@ api.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const res = await axios.post<{ token: string; refreshToken: string }>(
+      const res = await axios.post<{ token: string; refreshToken?: string | null }>(
         `${api.defaults.baseURL}/refresh`,
         { refreshToken },
       );
 
       const { token: newToken, refreshToken: newRefreshToken } = res.data;
       localStorage.setItem("admin_token", newToken);
-      localStorage.setItem("admin_refresh_token", newRefreshToken);
+
+      if (newRefreshToken) {
+        localStorage.setItem("admin_refresh_token", newRefreshToken);
+      } else {
+        localStorage.removeItem("admin_refresh_token");
+      }
 
       // Also update Zustand store if available
       const { useAuthStore } = await import("@/stores/useAuthStore");
-      useAuthStore.getState().setTokens(newToken, newRefreshToken);
+      useAuthStore.getState().setTokens(newToken, newRefreshToken ?? null);
 
       originalRequest.headers.Authorization = `Bearer ${newToken}`;
       processQueue(null, newToken);
@@ -95,7 +144,7 @@ api.interceptors.response.use(
       localStorage.removeItem("admin_token");
       localStorage.removeItem("admin_refresh_token");
       localStorage.removeItem("admin_user");
-      return Promise.reject(refreshError);
+      return Promise.reject(new Error(getApiErrorMessage(refreshError)));
     } finally {
       isRefreshing = false;
     }

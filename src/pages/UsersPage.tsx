@@ -19,6 +19,7 @@ const EMPTY_FORM: FormData = { username: "", email: "", password: "", role: "use
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
@@ -34,8 +35,9 @@ export default function UsersPage() {
     try {
       const data = await adminService.getUsers();
       setUsers(data);
-    } catch (err) {
-      console.error(err);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to load users";
+      setBanner({ type: "error", message });
     } finally {
       setLoading(false);
     }
@@ -51,6 +53,7 @@ export default function UsersPage() {
     setForm(EMPTY_FORM);
     setModalMode("create");
     setFormError("");
+    setBanner(null);
   };
 
   const openEdit = (user: User) => {
@@ -58,21 +61,30 @@ export default function UsersPage() {
     setEditingId(user.user_id);
     setModalMode("edit");
     setFormError("");
+    setBanner(null);
   };
 
   const closeModal = () => {
     setModalMode(null);
     setEditingId(null);
+    setFormError("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
+    setBanner(null);
 
     try {
+      const isCreate = modalMode === "create";
+
       if (modalMode === "create") {
         if (!form.password) {
           setFormError("Password is required");
+          return;
+        }
+        if (form.password.length < 8) {
+          setFormError("Password must be at least 8 characters.");
           return;
         }
         await adminService.createUser({ email: form.email, username: form.username, password: form.password, role: form.role });
@@ -80,7 +92,11 @@ export default function UsersPage() {
         await adminService.updateUser(editingId, { username: form.username, email: form.email, role: form.role, bio: form.bio });
       }
       closeModal();
-      fetchUsers();
+      await fetchUsers();
+      setBanner({
+        type: "success",
+        message: isCreate ? "User created and synced successfully." : "User updated successfully.",
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Operation failed";
       setFormError(msg);
@@ -89,9 +105,16 @@ export default function UsersPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await adminService.deleteUser(deleteTarget.user_id);
-    setDeleteTarget(null);
-    fetchUsers();
+
+    try {
+      await adminService.deleteUser(deleteTarget.user_id);
+      setDeleteTarget(null);
+      await fetchUsers();
+      setBanner({ type: "success", message: "User deleted successfully." });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete user";
+      setBanner({ type: "error", message });
+    }
   };
 
   const handleResetPassword = async () => {
@@ -103,10 +126,12 @@ export default function UsersPage() {
     }
 
     try {
-      await adminService.resetPassword(resetTarget.userId, resetPassword);
+      const response = await adminService.resetPassword(resetTarget.userId, resetPassword);
       setResetTarget(null);
       setResetPassword("");
       setResetError("");
+      await fetchUsers();
+      setBanner({ type: "success", message: response.message });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to reset password";
       setResetError(message);
@@ -136,6 +161,18 @@ export default function UsersPage() {
           + New User
         </button>
       </div>
+
+      {banner && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+            banner.type === "success"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              : "border-red-500/30 bg-red-500/10 text-red-400"
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
 
       {/* Search */}
       <input

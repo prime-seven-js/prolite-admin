@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { adminService } from "@/services/adminService";
-import type { Stats } from "@/types";
+import type { ChartStats, Stats } from "@/types";
 import {
   BarChart,
   Bar,
@@ -19,7 +19,7 @@ const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
-  const [chartData, setChartData] = useState<{ postsByPrivacy: any[]; postsByDate: any[] } | null>(null);
+  const [chartData, setChartData] = useState<ChartStats | null>(null);
 
   useEffect(() => {
     adminService.getStats().then(setStats).catch(console.error);
