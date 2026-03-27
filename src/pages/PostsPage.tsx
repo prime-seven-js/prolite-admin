@@ -1,35 +1,79 @@
 import { useEffect, useState } from "react";
 import { adminService } from "@/services/adminService";
+import { useAuthStore } from "@/stores/useAuthStore";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import type { Post } from "@/types";
 
 export default function PostsPage() {
+  const adminAccess = useAuthStore((s) => s.adminAccess);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<Post | null>(null);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
 
   const fetchPosts = async () => {
     setLoading(true);
     try {
-      const data = await adminService.getPosts();
+      setError("");
+      const data = await adminService.getPosts(adminAccess);
       setPosts(data);
-    } catch (err) {
-      console.error(err);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to load posts";
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchPosts();
-  }, []);
+    let active = true;
+
+    const loadPosts = async () => {
+      setLoading(true);
+      try {
+        const data = await adminService.getPosts(adminAccess);
+
+        if (!active) {
+          return;
+        }
+
+        setPosts(data);
+        setError("");
+      } catch (err: unknown) {
+        if (!active) {
+          return;
+        }
+
+        const message = err instanceof Error ? err.message : "Failed to load posts";
+        setError(message);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadPosts();
+
+    return () => {
+      active = false;
+    };
+  }, [adminAccess]);
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
-    await adminService.deletePost(deleteTarget.post_id);
-    setDeleteTarget(null);
-    fetchPosts();
+    if (!deleteTarget) {
+      return;
+    }
+
+    try {
+      await adminService.deletePost(deleteTarget.post_id);
+      setDeleteTarget(null);
+      await fetchPosts();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete post";
+      setError(message);
+    }
   };
 
   const filteredPosts = posts.filter(
@@ -41,7 +85,20 @@ export default function PostsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold mb-6">Posts</h1>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold">Posts</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          {adminAccess
+            ? "Delete is enabled through backend admin post endpoints."
+            : "Read-only mode. Current backend only exposes public post listing here."}
+        </p>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          {error}
+        </div>
+      )}
 
       <input
         type="text"
@@ -68,7 +125,10 @@ export default function PostsPage() {
             </thead>
             <tbody>
               {filteredPosts.map((post) => (
-                <tr key={post.post_id} className="border-b border-zinc-800/50 hover:bg-zinc-900/50 transition-colors">
+                <tr
+                  key={post.post_id}
+                  className="border-b border-zinc-800/50 hover:bg-zinc-900/50 transition-colors"
+                >
                   <td className="px-4 py-3 text-white font-medium">
                     {post.users?.username || "—"}
                   </td>
@@ -87,12 +147,16 @@ export default function PostsPage() {
                     {new Date(post.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => setDeleteTarget(post)}
-                      className="text-red-400 hover:text-red-300 text-xs transition-colors cursor-pointer"
-                    >
-                      Delete
-                    </button>
+                    {adminAccess ? (
+                      <button
+                        onClick={() => setDeleteTarget(post)}
+                        className="text-red-400 hover:text-red-300 text-xs transition-colors cursor-pointer"
+                      >
+                        Delete
+                      </button>
+                    ) : (
+                      <span className="text-xs text-zinc-600">Read only</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -108,7 +172,7 @@ export default function PostsPage() {
         </div>
       )}
 
-      {deleteTarget && (
+      {adminAccess && deleteTarget && (
         <ConfirmDialog
           title="Delete Post"
           message={`Delete post "${deleteTarget.title || "Untitled"}" by ${deleteTarget.users?.username || "unknown"}?`}

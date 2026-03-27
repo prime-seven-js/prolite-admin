@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import api from "@/services/api";
+import { adminService } from "@/services/adminService";
 import type { AuthState } from "@/types";
 
 const getStoredValue = (key: string) => {
@@ -12,6 +13,8 @@ const getStoredValue = (key: string) => {
   return value;
 };
 
+const getStoredBoolean = (key: string) => localStorage.getItem(key) === "true";
+
 const getStoredUser = () => {
   const rawUser = localStorage.getItem("admin_user");
 
@@ -20,66 +23,48 @@ const getStoredUser = () => {
   }
 
   try {
-    return JSON.parse(rawUser);
+    return JSON.parse(rawUser) as AuthState["user"];
   } catch {
     localStorage.removeItem("admin_user");
     return null;
   }
 };
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set) => ({
   token: getStoredValue("admin_token"),
-  refreshToken: getStoredValue("admin_refresh_token"),
+  adminAccess: getStoredBoolean("admin_access"),
   user: getStoredUser(),
 
   login: async (email, password) => {
     const { data } = await api.post<{
       token: string;
-      refreshToken?: string | null;
-      user: { userId: string; email: string; username: string; role: string };
+      user: { userId: string; email: string; username: string; role?: string | null };
     }>("/login", { email: email.trim().toLowerCase(), password });
 
-    if (data.user.role !== "admin") {
+    if (data.user.role && data.user.role !== "admin") {
       throw new Error("Access denied: admin only");
     }
 
     localStorage.setItem("admin_token", data.token);
-
-    if (data.refreshToken) {
-      localStorage.setItem("admin_refresh_token", data.refreshToken);
-    } else {
-      localStorage.removeItem("admin_refresh_token");
-    }
-
     localStorage.setItem("admin_user", JSON.stringify(data.user));
+
+    const adminAccess = await adminService.checkAdminAccess();
+
+    localStorage.setItem("admin_access", String(adminAccess));
+    localStorage.removeItem("admin_refresh_token");
+
     set({
       token: data.token,
-      refreshToken: data.refreshToken ?? null,
+      adminAccess,
       user: data.user,
     });
   },
 
   logout: () => {
-    // Try to call backend logout, ignore errors
-    const token = get().token;
-    if (token) {
-      api.post("/protected/logout").catch(() => {});
-    }
     localStorage.removeItem("admin_token");
     localStorage.removeItem("admin_refresh_token");
     localStorage.removeItem("admin_user");
-    set({ token: null, refreshToken: null, user: null });
-  },
-
-  setTokens: (token, refreshToken = null) => {
-    localStorage.setItem("admin_token", token);
-
-    if (refreshToken) {
-      localStorage.setItem("admin_refresh_token", refreshToken);
-    } else {
-      localStorage.removeItem("admin_refresh_token");
-    }
-
-    set({ token, refreshToken });
+    localStorage.removeItem("admin_access");
+    set({ token: null, adminAccess: false, user: null });
   },
 }));

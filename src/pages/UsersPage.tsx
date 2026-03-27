@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { adminService } from "@/services/adminService";
+import { useAuthStore } from "@/stores/useAuthStore";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import type { User } from "@/types";
 
@@ -14,26 +15,39 @@ interface FormData {
   bio: string;
 }
 
-const EMPTY_FORM: FormData = { username: "", email: "", password: "", role: "user", bio: "" };
+interface ResetPasswordForm {
+  newPassword: string;
+}
+
+const EMPTY_FORM: FormData = {
+  username: "",
+  email: "",
+  password: "",
+  role: "user",
+  bio: "",
+};
 
 export default function UsersPage() {
+  const adminAccess = useAuthStore((s) => s.adminAccess);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(
+    null,
+  );
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [formError, setFormError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [resetTarget, setResetTarget] = useState<ResetModalState>(null);
-  const [resetPassword, setResetPassword] = useState("");
+  const [resetForm, setResetForm] = useState<ResetPasswordForm>({ newPassword: "" });
   const [resetError, setResetError] = useState("");
   const [search, setSearch] = useState("");
 
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const data = await adminService.getUsers();
+      const data = await adminService.getUsers(adminAccess);
       setUsers(data);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load users";
@@ -44,10 +58,38 @@ export default function UsersPage() {
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    let active = true;
 
-  // ─── Handlers ───────────────────────────────
+    const loadUsers = async () => {
+      setLoading(true);
+      try {
+        const data = await adminService.getUsers(adminAccess);
+
+        if (!active) {
+          return;
+        }
+
+        setUsers(data);
+      } catch (err: unknown) {
+        if (!active) {
+          return;
+        }
+
+        const message = err instanceof Error ? err.message : "Failed to load users";
+        setBanner({ type: "error", message });
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadUsers();
+
+    return () => {
+      active = false;
+    };
+  }, [adminAccess]);
 
   const openCreate = () => {
     setForm(EMPTY_FORM);
@@ -57,7 +99,13 @@ export default function UsersPage() {
   };
 
   const openEdit = (user: User) => {
-    setForm({ username: user.username, email: user.email, password: "", role: user.role, bio: user.bio || "" });
+    setForm({
+      username: user.username,
+      email: user.email,
+      password: "",
+      role: user.role ?? "user",
+      bio: user.bio || "",
+    });
     setEditingId(user.user_id);
     setModalMode("edit");
     setFormError("");
@@ -87,15 +135,25 @@ export default function UsersPage() {
           setFormError("Password must be at least 8 characters.");
           return;
         }
-        await adminService.createUser({ email: form.email, username: form.username, password: form.password, role: form.role });
+        await adminService.createUser({
+          email: form.email,
+          username: form.username,
+          password: form.password,
+          role: form.role,
+        });
       } else if (modalMode === "edit" && editingId) {
-        await adminService.updateUser(editingId, { username: form.username, email: form.email, role: form.role, bio: form.bio });
+        await adminService.updateUser(editingId, {
+          username: form.username,
+          email: form.email,
+          role: form.role,
+          bio: form.bio,
+        });
       }
       closeModal();
       await fetchUsers();
       setBanner({
         type: "success",
-        message: isCreate ? "User created and synced successfully." : "User updated successfully.",
+        message: isCreate ? "User created successfully." : "User updated successfully.",
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Operation failed";
@@ -104,7 +162,9 @@ export default function UsersPage() {
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget) {
+      return;
+    }
 
     try {
       await adminService.deleteUser(deleteTarget.user_id);
@@ -118,20 +178,30 @@ export default function UsersPage() {
   };
 
   const handleResetPassword = async () => {
-    if (!resetTarget) return;
+    if (!resetTarget) {
+      return;
+    }
 
-    if (resetPassword.length < 8) {
-      setResetError("New password must be at least 8 characters.");
+    if (!resetForm.newPassword) {
+      setResetError("New password is required");
+      return;
+    }
+
+    if (resetForm.newPassword.length < 8) {
+      setResetError("Password must be at least 8 characters.");
       return;
     }
 
     try {
-      const response = await adminService.resetPassword(resetTarget.userId, resetPassword);
-      setResetTarget(null);
-      setResetPassword("");
+      const response = await adminService.resetPassword(
+        resetTarget.userId,
+        resetForm.newPassword,
+      );
       setResetError("");
       await fetchUsers();
       setBanner({ type: "success", message: response.message });
+      setResetTarget(null);
+      setResetForm({ newPassword: "" });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to reset password";
       setResetError(message);
@@ -142,24 +212,32 @@ export default function UsersPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  // ─── Filter ────────────────────────────────
   const filteredUsers = users.filter(
     (u) =>
       u.username.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase()),
   );
 
-  // ─── Render ────────────────────────────────
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold">Users</h1>
-        <button
-          onClick={openCreate}
-          className="bg-white text-black text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-200 transition-colors cursor-pointer"
-        >
-          + New User
-        </button>
+      <div className="flex items-center justify-between mb-6 gap-4">
+        <div>
+          <h1 className="text-xl font-bold">Users</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            {adminAccess
+              ? "Full CRUD is enabled through backend admin endpoints."
+              : "Read-only mode. Current backend only exposes public user listing here."}
+          </p>
+        </div>
+
+        {adminAccess && (
+          <button
+            onClick={openCreate}
+            className="bg-white text-black text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-200 transition-colors cursor-pointer"
+          >
+            + New User
+          </button>
+        )}
       </div>
 
       {banner && (
@@ -174,7 +252,6 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Search */}
       <input
         type="text"
         placeholder="Search by name or email..."
@@ -199,7 +276,10 @@ export default function UsersPage() {
             </thead>
             <tbody>
               {filteredUsers.map((user) => (
-                <tr key={user.user_id} className="border-b border-zinc-800/50 hover:bg-zinc-900/50 transition-colors">
+                <tr
+                  key={user.user_id}
+                  className="border-b border-zinc-800/50 hover:bg-zinc-900/50 transition-colors"
+                >
                   <td className="px-4 py-3 text-white font-medium">{user.username}</td>
                   <td className="px-4 py-3 text-zinc-400">{user.email}</td>
                   <td className="px-4 py-3">
@@ -210,35 +290,41 @@ export default function UsersPage() {
                           : "bg-zinc-800 text-zinc-400"
                       }`}
                     >
-                      {user.role}
+                      {user.role ?? "—"}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-zinc-500">
                     {new Date(user.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-right space-x-2">
-                    <button
-                      onClick={() => openEdit(user)}
-                      className="text-zinc-400 hover:text-white text-xs transition-colors cursor-pointer"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => {
-                        setResetTarget({ userId: user.user_id, username: user.username });
-                        setResetPassword("");
-                        setResetError("");
-                      }}
-                      className="text-blue-400 hover:text-blue-300 text-xs transition-colors cursor-pointer"
-                    >
-                      Reset PW
-                    </button>
-                    <button
-                      onClick={() => setDeleteTarget(user)}
-                      className="text-red-400 hover:text-red-300 text-xs transition-colors cursor-pointer"
-                    >
-                      Delete
-                    </button>
+                    {adminAccess ? (
+                      <>
+                        <button
+                          onClick={() => openEdit(user)}
+                          className="text-zinc-400 hover:text-white text-xs transition-colors cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            setResetTarget({ userId: user.user_id, username: user.username });
+                            setResetForm({ newPassword: "" });
+                            setResetError("");
+                          }}
+                          className="text-blue-400 hover:text-blue-300 text-xs transition-colors cursor-pointer"
+                        >
+                          Reset PW
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(user)}
+                          className="text-red-400 hover:text-red-300 text-xs transition-colors cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-zinc-600">Read only</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -254,7 +340,6 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Create / Edit Modal */}
       {modalMode && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <form
@@ -333,7 +418,6 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Delete Confirm */}
       {deleteTarget && (
         <ConfirmDialog
           title="Delete User"
@@ -343,7 +427,6 @@ export default function UsersPage() {
         />
       )}
 
-      {/* Reset Password */}
       {resetTarget && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <form
@@ -367,12 +450,10 @@ export default function UsersPage() {
             )}
 
             <input
-              type="password"
-              value={resetPassword}
-              onChange={(e) => setResetPassword(e.target.value)}
               placeholder="New password"
-              minLength={8}
-              required
+              type="password"
+              value={resetForm.newPassword}
+              onChange={(e) => setResetForm({ newPassword: e.target.value })}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
             />
 
@@ -381,12 +462,12 @@ export default function UsersPage() {
                 type="button"
                 onClick={() => {
                   setResetTarget(null);
-                  setResetPassword("");
+                  setResetForm({ newPassword: "" });
                   setResetError("");
                 }}
                 className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 cursor-pointer"
               >
-                Cancel
+                Close
               </button>
               <button
                 type="submit"

@@ -4,7 +4,7 @@ export interface User {
   email: string;
   avatar: string | null;
   bio: string | null;
-  role: string;
+  role: string | null;
   created_at: string;
 }
 
@@ -43,9 +43,8 @@ export interface AppComment {
 
 export interface AuthState {
   token: string | null;
-  refreshToken: string | null;
-  user: { userId: string; email: string; username: string; role: string } | null;
+  adminAccess: boolean;
+  user: { userId: string; email: string; username: string; role?: string | null } | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  setTokens: (token: string, refreshToken?: string | null) => void;
 }

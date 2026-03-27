@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { adminService } from "@/services/adminService";
+import { useAuthStore } from "@/stores/useAuthStore";
 import type { ChartStats, Stats } from "@/types";
 import {
   BarChart,
@@ -18,13 +19,41 @@ import {
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
 export default function DashboardPage() {
+  const adminAccess = useAuthStore((s) => s.adminAccess);
   const [stats, setStats] = useState<Stats | null>(null);
   const [chartData, setChartData] = useState<ChartStats | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    adminService.getStats().then(setStats).catch(console.error);
-    adminService.getChartStats().then(setChartData).catch(console.error);
-  }, []);
+    let active = true;
+
+    const loadDashboard = async () => {
+      try {
+        setError("");
+        const data = await adminService.getDashboard(adminAccess);
+
+        if (!active) {
+          return;
+        }
+
+        setStats(data.stats);
+        setChartData(data.chartStats);
+      } catch (err: unknown) {
+        if (!active) {
+          return;
+        }
+
+        const message = err instanceof Error ? err.message : "Failed to load dashboard";
+        setError(message);
+      }
+    };
+
+    loadDashboard();
+
+    return () => {
+      active = false;
+    };
+  }, [adminAccess]);
 
   const cards = stats
     ? [
@@ -37,7 +66,23 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-bold mb-6">Dashboard</h1>
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-xl font-bold">Dashboard</h1>
+            <p className="text-sm text-zinc-500 mt-1">
+              {adminAccess
+                ? "Using protected admin endpoints available in backend."
+                : "Read-only mode from current backend APIs. Charts are computed client-side."}
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            {error}
+          </div>
+        )}
+
         {!stats ? (
           <p className="text-zinc-500 text-sm">Loading stats...</p>
         ) : (
@@ -57,25 +102,30 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Bar Chart: Posts by Date */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
           <h2 className="text-sm font-medium text-zinc-400 mb-6">Posts in last 7 days</h2>
           <div className="h-64 w-full">
             {!chartData ? (
-              <div className="h-full w-full flex items-center justify-center text-zinc-600 text-xs">Loading chart...</div>
+              <div className="h-full w-full flex items-center justify-center text-zinc-600 text-xs">
+                Loading chart...
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData.postsByDate}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke="#71717a" 
-                    fontSize={10} 
-                    tickFormatter={(str) => str.split('-').slice(1).join('/')}
+                  <XAxis
+                    dataKey="date"
+                    stroke="#71717a"
+                    fontSize={10}
+                    tickFormatter={(str) => str.split("-").slice(1).join("/")}
                   />
                   <YAxis stroke="#71717a" fontSize={10} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: "8px" }}
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#18181b",
+                      border: "1px solid #27272a",
+                      borderRadius: "8px",
+                    }}
                     itemStyle={{ color: "#fff", fontSize: "12px" }}
                   />
                   <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
@@ -85,12 +135,13 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Pie Chart: Posts by Privacy */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
           <h2 className="text-sm font-medium text-zinc-400 mb-6">Privacy Distribution</h2>
           <div className="h-64 w-full">
             {!chartData ? (
-              <div className="h-full w-full flex items-center justify-center text-zinc-600 text-xs">Loading chart...</div>
+              <div className="h-full w-full flex items-center justify-center text-zinc-600 text-xs">
+                Loading chart...
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -108,8 +159,12 @@ export default function DashboardPage() {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: "8px" }}
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#18181b",
+                      border: "1px solid #27272a",
+                      borderRadius: "8px",
+                    }}
                     itemStyle={{ color: "#fff", fontSize: "12px" }}
                   />
                   <Legend verticalAlign="bottom" height={36} iconType="circle" />

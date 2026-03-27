@@ -9,7 +9,7 @@ const NAV_ITEMS = [
 ];
 
 export default function AdminLayout() {
-  const { user, logout } = useAuthStore();
+  const { user, adminAccess, logout } = useAuthStore();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -23,6 +23,17 @@ export default function AdminLayout() {
       <aside className="w-56 shrink-0 border-r border-zinc-800 flex flex-col">
         <div className="px-5 py-5 text-lg font-black tracking-wider text-white">
           PROLITE <span className="text-xs font-normal text-zinc-500">admin</span>
+          <div className="mt-2">
+            <span
+              className={`inline-flex rounded-full px-2 py-1 text-[10px] font-medium uppercase tracking-wide ${
+                adminAccess
+                  ? "bg-emerald-500/10 text-emerald-300"
+                  : "bg-amber-500/10 text-amber-300"
+              }`}
+            >
+              {adminAccess ? "Full Admin API" : "Read Only API"}
+            </span>
+          </div>
         </div>
 
         <nav className="flex-1 px-3 space-y-1">
